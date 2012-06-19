@@ -1,9 +1,12 @@
+require 'delegate'
+
 # OrderedHash is namespaced to prevent conflicts with other implementations
 class Cassandra
-    class OrderedHashInt < Hash #:nodoc:
+    class OrderedHashInt < Delegator #:nodoc:
       def initialize(*args, &block)
-        super
-        @keys = []
+        @tuples = []
+        @is_hash = false
+        super(@hash = {})
       end
 
       def self.[](*args)
@@ -30,81 +33,103 @@ class Cassandra
         ordered_hash
       end
 
+      def dup
+        copy = self.class.new
+        copy.send(:initialize_copy, self)
+        copy
+      end
+
       def initialize_copy(other)
-        super
-        # make a deep copy of keys
-        @keys = other.keys
+        @tuples = other.to_a.dup
+        @is_hash = false
+      end
+
+      def __getobj__
+        unless @is_hash
+          @hash = Hash[@tuples]
+          @is_hash = true
+        end
+
+        return @hash
+      end
+
+      def __setobj__(obj)
+        @hash = obj
       end
 
       def []=(key, value)
-        @keys << key if !has_key?(key)
-        super
+        @tuples << [key, value]
+        @hash[key] = value if @is_hash
       end
 
       def delete(key)
-        if has_key? key
-          index = @keys.index(key)
-          @keys.delete_at index
+        super if @is_hash
+
+        if i = @tuples.index {|t| t.first == key }
+          @tuples.delete_at(i).last
         end
-        super
       end
 
-      def delete_if
-        super
-        sync_keys!
+      def delete_if(&block)
+        super if @is_hash
+
+        @tuples.delete_if {|t| block.call(*t) }
         self
       end
 
-      def reject!
-        super
-        sync_keys!
+      def reject!(&block)
+        super if @is_hash
+
+        @tuples.reject! {|t| block.call(*t) }
         self
       end
 
       def reject(&block)
-        dup.reject!(&block)
+        copy = dup
+        copy.reject!(&block)
+        copy
       end
 
       def keys
-        @keys.dup
+        @tuples.map(&:first)
       end
 
       def values
-        @keys.collect { |key| self[key] }
+        @tuples.map(&:last)
       end
 
       def to_hash
-        self
+        return self
       end
 
       def to_a
-        @keys.map { |key| [ key, self[key] ] }
+        @tuples
       end
 
       def each_key
-        @keys.each { |key| yield key }
+        @tuples.each {|tuple| yield(tuple.first) }
       end
 
       def each_value
-        @keys.each { |key| yield self[key]}
+        @tuples.each {|tuple| yield(tuple.last) }
       end
 
       def each
-        @keys.each {|key| yield [key, self[key]]}
+        @tuples.each {|tuple| yield(tuple) }
       end
 
       alias_method :each_pair, :each
 
       def clear
-        super
-        @keys.clear
+        @tuples.clear
+        super if @is_hash
         self
       end
 
       def shift
-        k = @keys.first
-        v = delete(k)
-        [k, v]
+        t = @tuples.shift
+        __getobj__.delete(t.first) if @is_hash
+        t
       end
 
       def merge!(other_hash)
@@ -118,19 +143,12 @@ class Cassandra
 
       # When replacing with another hash, the initial order of our keys must come from the other hash -ordered or not.
       def replace(other)
-        super
-        @keys = other.keys
+        @tuples = other.to_a
         self
       end
-      
+
       def reverse
         OrderedHashInt[self.to_a.reverse]
-      end
-
-    private
-
-      def sync_keys!
-        @keys.delete_if {|k| !has_key?(k)}
       end
     end
 

@@ -12,8 +12,32 @@ class Cassandra
       @column_name_class[column_family] ||= column_name_class_for_key(column_family, "comparator_type")
     end
 
+    def column_name_maker(column_family)
+      @column_name_maker[column_family] ||=
+        begin
+          klass = column_name_class(column_family)
+          if klass == Composite
+            lambda {|name| klass.new_from_packed(name) }
+          else
+            lambda {|name| klass.new(name) }
+          end
+        end
+    end
+
     def sub_column_name_class(column_family)
       @sub_column_name_class[column_family] ||= column_name_class_for_key(column_family, "subcomparator_type")
+    end
+
+    def sub_column_name_maker(column_family)
+      @sub_column_name_maker[column_family] ||=
+        begin
+          klass = sub_column_name_class(column_family)
+          if klass == Composite
+            lambda {|name| klass.new_from_packed(name) }
+          else
+            lambda {|name| klass.new(name) }
+          end
+        end
     end
 
     def column_name_class_for_key(column_family, comparator_key)
@@ -64,25 +88,40 @@ class Cassandra
     end
 
     def columns_to_hash(column_family, columns)
-      columns_to_hash_for_classes(columns, column_name_class(column_family), sub_column_name_class(column_family))
+      columns_to_hash_for_classes(columns, column_name_maker(column_family), sub_column_name_maker(column_family))
     end
 
     def sub_columns_to_hash(column_family, columns)
-      columns_to_hash_for_classes(columns, sub_column_name_class(column_family))
+      columns_to_hash_for_classes(columns, sub_column_name_maker(column_family))
     end
 
-    def columns_to_hash_for_classes(columns, column_name_class, sub_column_name_class = nil)
+    def columns_to_hash_for_classes(columns, column_name_maker, sub_column_name_class = nil)
       hash = OrderedHash.new
+
+      first_column = Array(columns).first
+      first_column = first_column.super_column || first_column.column || first_column.counter_column if first_column.is_a?(CassandraThrift::ColumnOrSuperColumn)
+
+      make_column = nil
+      case first_column
+      when CassandraThrift::SuperColumn
+        make_column = lambda do |c|
+          hash.[]=(column_name_maker.call(c.name), columns_to_hash_for_classes(c.columns, sub_column_name_class)) # Pop the class stack, and recurse
+        end
+      when CassandraThrift::Column
+        make_column = lambda do |c|
+          hash.[]=(column_name_maker.call(c.name), c.value, c.timestamp)
+        end
+      when CassandraThrift::CounterColumn
+        make_column = lambda do |c|
+          hash.[]=(column_name_maker.call(c.name), c.value, 0)
+        end
+      else
+        puts first_column.inspect
+      end
+
       Array(columns).each do |c|
         c = c.super_column || c.column || c.counter_column if c.is_a?(CassandraThrift::ColumnOrSuperColumn)
-        case c
-        when CassandraThrift::SuperColumn
-          hash.[]=(column_name_class.new(c.name), columns_to_hash_for_classes(c.columns, sub_column_name_class)) # Pop the class stack, and recurse
-        when CassandraThrift::Column
-          hash.[]=(column_name_class.new(c.name), c.value, c.timestamp)
-        when CassandraThrift::CounterColumn
-          hash.[]=(column_name_class.new(c.name), c.value, 0)
-        end
+        make_column.call(c)
       end
       hash
     end
