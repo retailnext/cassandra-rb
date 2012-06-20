@@ -1,4 +1,5 @@
 #include <ruby.h>
+#include <arpa/inet.h>
 
 VALUE parts_ivar_id;
 
@@ -10,7 +11,7 @@ VALUE rb_cassandra_composite_fast_unpack(VALUE self, VALUE packed_string_value) 
 
   VALUE parts = rb_ary_new();
   while (index < message_length) {
-    uint16_t length = htons(((uint16_t *)(packed_string+index))[0]);
+    uint16_t length = ntohs(((uint16_t *)(packed_string+index))[0]);
     VALUE part = rb_str_new("", length);
     for (i = 0; i < length; i++) {
       ((char *)RSTRING_PTR(part))[i] = packed_string[index+2+i];
