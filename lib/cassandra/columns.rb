@@ -98,7 +98,10 @@ class Cassandra
     def columns_to_hash_for_classes(columns, column_name_maker, sub_column_name_class = nil)
       hash = OrderedHash.new
 
-      first_column = Array(columns).first
+      columns = Array(columns)
+      return hash if columns.empty?
+
+      first_column = columns.first
       first_column = first_column.super_column || first_column.column || first_column.counter_column if first_column.is_a?(CassandraThrift::ColumnOrSuperColumn)
 
       make_column = nil
@@ -115,11 +118,9 @@ class Cassandra
         make_column = lambda do |c|
           hash.[]=(column_name_maker.call(c.name), c.value, 0)
         end
-      else
-        puts first_column.inspect
       end
 
-      Array(columns).each do |c|
+      columns.each do |c|
         c = c.super_column || c.column || c.counter_column if c.is_a?(CassandraThrift::ColumnOrSuperColumn)
         make_column.call(c)
       end
@@ -140,7 +141,7 @@ class Cassandra
     end
 
     def _super_insert_mutation(column_family, super_column_name, sub_columns, timestamp, ttl = nil)
-      CassandraThrift::Mutation.new(:column_or_supercolumn => 
+      CassandraThrift::Mutation.new(:column_or_supercolumn =>
         CassandraThrift::ColumnOrSuperColumn.new(
           :super_column => CassandraThrift::SuperColumn.new(
             :name => column_name_class(column_family).new(super_column_name).to_s,
@@ -159,12 +160,12 @@ class Cassandra
 
     # General info about a deletion object within a mutation
     # timestamp - required. If this is the only param, it will cause deletion of the whole key at that TS
-    # supercolumn - opt. If passed, the deletes will only occur within that supercolumn (only subcolumns 
+    # supercolumn - opt. If passed, the deletes will only occur within that supercolumn (only subcolumns
     #               will be deleted). Otherwise the normal columns will be deleted.
-    # predicate - opt. Defines how to match the columns to delete. if supercolumn passed, the slice will 
+    # predicate - opt. Defines how to match the columns to delete. if supercolumn passed, the slice will
     #               be scoped to subcolumns of that supercolumn.
-    
-    # Deletes a single column from the containing key/CF (and possibly supercolumn), at a given timestamp. 
+
+    # Deletes a single column from the containing key/CF (and possibly supercolumn), at a given timestamp.
     # Although mutations (as opposed to 'remove' calls) support deleting slices and lists of columns in one shot, this is not implemented here.
     # The main reason being that the batch function takes removes, but removes don't have that capability...so we'd need to change the remove
     # methods to use delete mutation calls...although that might have performance implications. We'll leave that refactoring for later.
