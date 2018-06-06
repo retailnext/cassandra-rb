@@ -944,7 +944,7 @@ class Cassandra
 
     column_family, columns, _, options =
       extract_and_validate_params(column_family, [], columns_and_options,
-      READ_DEFAULTS.merge(:key_count => 100, :start_key => nil, :key_start => nil))
+      READ_DEFAULTS.merge(:key_count => 100, :start_key => nil, :key_start => nil, :columns => nil))
 
     start_key = options[:start_key] || options[:key_start] || ""
 
@@ -956,7 +956,7 @@ class Cassandra
       index_clause = create_index_clause(index_expressions, start_key, options[:key_count])
     end
 
-    key_slices = _get_indexed_slices(column_family, index_clause, columns, options[:count], options[:start],
+    key_slices = _get_indexed_slices(column_family, index_clause, options[:columns], options[:count], options[:start],
       options[:finish], options[:reversed], options[:consistency])
 
     key_slices.inject(OrderedHash.new) {|h, key_slice| h[key_slice.key] = key_slice.columns; h }
