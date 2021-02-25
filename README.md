@@ -9,7 +9,7 @@ Here is a quick sample of the general use (more details in Read/Write
 API below):
 
     require 'cassandra'
-    client = Cassandra.new('Twitter', '127.0.0.1:9160')
+    client = CassandraOld.new('Twitter', '127.0.0.1:9160')
     client.insert(:Users, "5", {'screen_name' => "buttonscat"})
 
 ## License
@@ -348,20 +348,20 @@ Example:
     @client.get_indexed_slices(:Statuses, expressions).length       # returns 5
 
 ### batch
-Takes a block where all the mutations (inserts and deletions) inside it are 
+Takes a block where all the mutations (inserts and deletions) inside it are
 queued, and at the end of the block are passed to cassandra in a single batch.
 
-If you don't want to send all the mutations inside the block in a big single 
-batch, you can use the :queue\_size option to send smaller batches. If the 
+If you don't want to send all the mutations inside the block in a big single
+batch, you can use the :queue\_size option to send smaller batches. If the
 queue is not empty at the end of the block, the remaining mutations are sent.
 
 * options
   * :consistency  - Override the consistency level from individual mutations.
   * :queue\_size  - Maximum number of mutations to send at once.
 
-Example: 
+Example:
 
-    @client.batch do 
+    @client.batch do
       @client.insert(:Statuses, 'k1', {'body' => 'v1'})
       @client.insert(:Statuses, 'k2', {'body' => 'v2'})
       @client.remove(:Statuses, 'k3')
